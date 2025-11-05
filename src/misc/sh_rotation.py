@@ -18,8 +18,8 @@ def rotate_sh(
     alpha, beta, gamma = matrix_to_angles(rotations)
     result = []
     for degree in range(isqrt(n)):
-        # Ensure angles are on the same device as sh_coefficients
-        sh_rotations = wigner_D(degree, alpha.to(device), beta.to(device), gamma.to(device)).type(dtype).to(device)
+        # wigner_D requires all inputs on CPU, then move result to target device
+        sh_rotations = wigner_D(degree, alpha.cpu(), beta.cpu(), gamma.cpu()).type(dtype).to(device)
         sh_rotated = einsum(
             sh_rotations,
             sh_coefficients[..., degree**2 : (degree + 1) ** 2],
