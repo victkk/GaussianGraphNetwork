@@ -225,20 +225,7 @@ class ModelWrapper(LightningModule):
         images_prob = output.color[0]
         rgb_gt = batch["target"]["image"][0]
 
-        # # Save images.
-        # if self.test_cfg.save_image:
-        #     for index, color in zip(batch["target"]["index"][0], images_prob):
-        #         save_image(color, path / scene / f"color/{index:0>6}.png")
-
-        # # save video
-        # if self.test_cfg.save_video:
-        #     frame_str = "_".join([str(x.item()) for x in batch["context"]["index"][0]])
-        #     save_video(
-        #         [a for a in images_prob],
-        #         path / "video" / f"{scene}_frame_{frame_str}.mp4",
-        #     )
-
-        # # compute scores
+        # compute scores
         # if self.test_cfg.compute_scores:
         #     if batch_idx < self.test_cfg.eval_time_skip_steps:
         #         self.time_skip_steps_dict["encoder"] += 1
@@ -268,24 +255,22 @@ class ModelWrapper(LightningModule):
         # # assert 1==0
 
 
-        # # Save images.
-        # if self.test_cfg.save_image:
-        #     for index, color in zip(batch["target"]["index"][0], images_prob):
-        #         save_image(color, path / scene / f"color/{index:0>6}.png")
-        #         # save_image(color, f"prob_{index}.png")
-            
-        #     for index, color in zip(batch["target"]["index"][0], rgb_gt):
-        #         save_image(color, path / scene / f"color/{index:0>6}_gt.png")
-        #         # save_image(color, f"gt_{index}.png")
+        # Save images.
+        if self.test_cfg.save_image:
+            for index, color in zip(batch["target"]["index"][0], images_prob):
+                save_image(color, path / scene / f"color/{index:0>6}.png")
+
+            for index, color in zip(batch["target"]["index"][0], rgb_gt):
+                save_image(color, path / scene / f"color/{index:0>6}_gt.png")
 
 
-        # # save video
-        # if self.test_cfg.save_video:
-        #     frame_str = "_".join([str(x.item()) for x in batch["context"]["index"][0]])
-        #     save_video(
-        #         [a for a in images_prob],
-        #         path / "video" / f"{scene}_frame_{frame_str}.mp4",
-        #     )
+        # save video
+        if self.test_cfg.save_video:
+            frame_str = "_".join([str(x.item()) for x in batch["context"]["index"][0]])
+            save_video(
+                [a for a in images_prob],
+                path / "video" / f"{scene}_frame_{frame_str}.mp4",
+            )
 
         # Save Gaussians as PLY
         # Note: GGN's Gaussians use covariance matrices instead of scales+rotations.
