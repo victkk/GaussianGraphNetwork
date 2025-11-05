@@ -150,59 +150,18 @@ class DatasetDL3DV(IterableDataset):
                 scene = example["key"]
 
                 try:
-                    extra_kwargs = {}
-                    if self.cfg.overfit_to_scene is not None and self.stage != "test":
-                        extra_kwargs.update(
-                            {
-                                "max_num_views": (
-                                    148
-                                    if self.cfg.overfit_max_views is None
-                                    else self.cfg.overfit_max_views
-                                )
-                            }
-                        )
-
-                    out_data = self.view_sampler.sample(
+                    # GGN's view_sampler does not accept min_context_views/max_context_views
+                    # These are configured in the view_sampler config instead
+                    context_indices, target_indices = self.view_sampler.sample(
                         scene,
                         extrinsics,
                         intrinsics,
-                        min_context_views=self.cfg.min_views,
-                        max_context_views=self.cfg.max_views,
-                        **extra_kwargs,
                     )
-                    if isinstance(out_data, tuple):
-                        context_indices, target_indices = out_data[:2]
-                        c_list = [
-                            (
-                                context_indices.sort()[0]
-                                if self.cfg.sort_context_index
-                                else context_indices
-                            )
-                        ]
-                        t_list = [
-                            (
-                                target_indices.sort()[0]
-                                if self.cfg.sort_target_index
-                                else target_indices
-                            )
-                        ]
-                    if isinstance(out_data, list):
-                        c_list = [
-                            (
-                                a.context.sort()[0]
-                                if self.cfg.sort_context_index
-                                else a.context
-                            )
-                            for a in out_data
-                        ]
-                        t_list = [
-                            (
-                                a.target.sort()[0]
-                                if self.cfg.sort_target_index
-                                else a.target
-                            )
-                            for a in out_data
-                        ]
+                    # GGN's view_sampler always returns a tuple, no need for list handling
+                    if self.cfg.sort_context_index:
+                        context_indices = context_indices.sort()[0]
+                    if self.cfg.sort_target_index:
+                        target_indices = target_indices.sort()[0]
 
                 except ValueError:
                     # Skip because the example doesn't have enough frames.
@@ -212,103 +171,102 @@ class DatasetDL3DV(IterableDataset):
                 if (get_fov(intrinsics).rad2deg() > self.cfg.max_fov).any():
                     continue
 
-                for context_indices, target_indices in zip(c_list, t_list):
-                    # Load the images.
-                    context_images = [
-                        example["images"][index.item()] for index in context_indices
-                    ]
+                # Load the images.
+                context_images = [
+                    example["images"][index.item()] for index in context_indices
+                ]
 
-                    try:
-                        context_images = self.convert_images(context_images)
-                    except OSError:
-                        # some data might be corrupted
-                        continue
+                try:
+                    context_images = self.convert_images(context_images)
+                except OSError:
+                    # some data might be corrupted
+                    continue
 
-                    target_images = [
-                        example["images"][index.item()] for index in target_indices
-                    ]
+                target_images = [
+                    example["images"][index.item()] for index in target_indices
+                ]
 
-                    try:
-                        target_images = self.convert_images(target_images)
-                    except OSError:
-                        # some data might be corrupted
-                        continue
+                try:
+                    target_images = self.convert_images(target_images)
+                except OSError:
+                    # some data might be corrupted
+                    continue
 
-                    # Skip the example if the images don't have the right shape.
-                    expected_shape = tuple(
-                        [3, *self.cfg.ori_image_shape]
-                    )  # (3, 270, 480) or (3, 540, 960)
+                # Skip the example if the images don't have the right shape.
+                expected_shape = tuple(
+                    [3, *self.cfg.ori_image_shape]
+                )  # (3, 270, 480) or (3, 540, 960)
 
-                    context_image_invalid = context_images.shape[1:] != expected_shape
-                    target_image_invalid = target_images.shape[1:] != expected_shape
+                context_image_invalid = context_images.shape[1:] != expected_shape
+                target_image_invalid = target_images.shape[1:] != expected_shape
 
-                    if self.cfg.skip_bad_shape and (
-                        context_image_invalid or target_image_invalid
-                    ):
-                        print(
-                            f"Skipped bad example {example['key']}. Context shape was "
-                            f"{context_images.shape}, target shape was "
-                            f"{target_images.shape}, and expected shape was {expected_shape}"
-                        )
-                        continue
+                if self.cfg.skip_bad_shape and (
+                    context_image_invalid or target_image_invalid
+                ):
+                    print(
+                        f"Skipped bad example {example['key']}. Context shape was "
+                        f"{context_images.shape}, target shape was "
+                        f"{target_images.shape}, and expected shape was {expected_shape}"
+                    )
+                    continue
 
-                    # check the extrinsics
-                    if any(torch.isnan(torch.det(extrinsics[context_indices][:, :3, :3]))):
-                        # print('invalid extrinsics')
-                        continue
+                # check the extrinsics
+                if any(torch.isnan(torch.det(extrinsics[context_indices][:, :3, :3]))):
+                    # print('invalid extrinsics')
+                    continue
 
-                    if any(torch.isnan(torch.det(extrinsics[target_indices][:, :3, :3]))):
-                        # print('invalid extrinsics')
-                        continue
+                if any(torch.isnan(torch.det(extrinsics[target_indices][:, :3, :3]))):
+                    # print('invalid extrinsics')
+                    continue
 
-                    # check the extrinsics: translation could be very large
-                    # https://github.com/DL3DV-10K/Dataset/issues/34
-                    if (extrinsics[context_indices][:, :3, 3] > 1e3).any():
-                        # print('extremely large camera translation')
-                        continue
+                # check the extrinsics: translation could be very large
+                # https://github.com/DL3DV-10K/Dataset/issues/34
+                if (extrinsics[context_indices][:, :3, 3] > 1e3).any():
+                    # print('extremely large camera translation')
+                    continue
 
-                    if (extrinsics[target_indices][:, :3, 3] > 1e3).any():
-                        # print('extremely large camera translation')
-                        continue
+                if (extrinsics[target_indices][:, :3, 3] > 1e3).any():
+                    # print('extremely large camera translation')
+                    continue
 
-                    if not torch.allclose(torch.det(extrinsics[context_indices][:, :3, :3]), torch.det(extrinsics[context_indices][:, :3, :3]).new_tensor(1)):
-                        # print('invalid extrinsics')
-                        continue
-                    if not torch.allclose(torch.det(extrinsics[target_indices][:, :3, :3]), torch.det(extrinsics[target_indices][:, :3, :3]).new_tensor(1)):
-                        # print('invalid extrinsics')
-                        continue
+                if not torch.allclose(torch.det(extrinsics[context_indices][:, :3, :3]), torch.det(extrinsics[context_indices][:, :3, :3]).new_tensor(1)):
+                    # print('invalid extrinsics')
+                    continue
+                if not torch.allclose(torch.det(extrinsics[target_indices][:, :3, :3]), torch.det(extrinsics[target_indices][:, :3, :3]).new_tensor(1)):
+                    # print('invalid extrinsics')
+                    continue
 
-                    nf_scale = 1.0
-                    example_out = {
-                        "context": {
-                            "extrinsics": extrinsics[context_indices],
-                            "intrinsics": intrinsics[context_indices],
-                            "image": context_images,
-                            "near": self.get_bound("near", len(context_indices))
-                            / nf_scale,
-                            "far": self.get_bound("far", len(context_indices))
-                            / nf_scale,
-                            "index": context_indices,
-                        },
-                        "target": {
-                            "extrinsics": extrinsics[target_indices],
-                            "intrinsics": intrinsics[target_indices],
-                            "image": target_images,
-                            "near": self.get_bound("near", len(target_indices))
-                            / nf_scale,
-                            "far": self.get_bound("far", len(target_indices))
-                            / nf_scale,
-                            "index": target_indices,
-                        },
-                        "scene": scene,
-                    }
+                nf_scale = 1.0
+                example_out = {
+                    "context": {
+                        "extrinsics": extrinsics[context_indices],
+                        "intrinsics": intrinsics[context_indices],
+                        "image": context_images,
+                        "near": self.get_bound("near", len(context_indices))
+                        / nf_scale,
+                        "far": self.get_bound("far", len(context_indices))
+                        / nf_scale,
+                        "index": context_indices,
+                    },
+                    "target": {
+                        "extrinsics": extrinsics[target_indices],
+                        "intrinsics": intrinsics[target_indices],
+                        "image": target_images,
+                        "near": self.get_bound("near", len(target_indices))
+                        / nf_scale,
+                        "far": self.get_bound("far", len(target_indices))
+                        / nf_scale,
+                        "index": target_indices,
+                    },
+                    "scene": scene,
+                }
 
-                    if self.stage == "train" and self.cfg.augment:
-                        example_out = apply_augmentation_shim(example_out)
-                    if self.cfg.image_shape == list(context_images.shape[2:]):
-                        yield example_out
-                    else:
-                        yield apply_crop_shim(example_out, tuple(self.cfg.image_shape))
+                if self.stage == "train" and self.cfg.augment:
+                    example_out = apply_augmentation_shim(example_out)
+                if self.cfg.image_shape == list(context_images.shape[2:]):
+                    yield example_out
+                else:
+                    yield apply_crop_shim(example_out, tuple(self.cfg.image_shape))
 
     def convert_poses(
         self,
