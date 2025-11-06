@@ -278,12 +278,17 @@ class ModelWrapper(LightningModule):
             name = get_cfg()["wandb"]["name"]
             ply_save_path = self.test_cfg.output_path / name / "gaussians" / f"{scene}.ply"
 
-            # Export Gaussian centers with colors from harmonics
-            export_point_cloud_ply(
-                means=gaussians.means[0],  # (N, 3)
-                path=ply_save_path,
-                harmonics=gaussians.harmonics[0],  # (N, 3, d_sh) - optional, for colors
-            )
+            # GGN encoder returns gs_list: list of (mean, covariances, harmonics, opacity, scales, rotations)
+            # Extract from first batch
+            if isinstance(gaussians, list) and len(gaussians) > 0:
+                mean, covariances, harmonics, opacity, scales, rotations = gaussians[0]
+                export_point_cloud_ply(
+                    means=mean,  # (N, 3)
+                    path=ply_save_path,
+                    harmonics=harmonics,  # (N, 3, d_sh) - optional, for colors
+                )
+            else:
+                print(f"Warning: Cannot export PLY - unexpected gaussians format: {type(gaussians)}")
 
         save_path = 'res_8view_re10k.json'
 
