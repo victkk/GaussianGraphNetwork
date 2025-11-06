@@ -48,4 +48,4 @@ test:
   eval_time_skip_steps: 0
   compute_scores: true
   dec_chunk_size: 30
-  save_gaussian: false
+  save_gaussian: true
