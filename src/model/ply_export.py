@@ -90,3 +90,58 @@ def export_ply(
     elements[:] = list(map(tuple, attributes))
     path.parent.mkdir(exist_ok=True, parents=True)
     PlyData([PlyElement.describe(elements, "vertex")]).write(path)
+
+
+def export_point_cloud_ply(
+    means: Float[Tensor, "gaussian 3"],
+    path: Path,
+    harmonics: Float[Tensor, "gaussian 3 d_sh"] | None = None,
+):
+    """
+    Export Gaussian centers as a simple point cloud PLY file.
+
+    Args:
+        means: (N, 3) - xyz coordinates of Gaussian centers
+        harmonics: (N, 3, d_sh) - optional spherical harmonics for color (uses DC component)
+        path: output PLY file path
+    """
+    means = means.detach().cpu().numpy()
+    num_points = means.shape[0]
+
+    # Prepare vertex data
+    if harmonics is not None:
+        # Extract DC component (first SH coefficient) as RGB color
+        # DC component is already RGB, no need for SH2RGB conversion
+        colors = harmonics[:, :, 0].detach().cpu().numpy()  # (N, 3)
+        # Clamp colors to [0, 1] range
+        colors = np.clip(colors, 0, 1)
+        # Convert to [0, 255] range for PLY
+        colors = (colors * 255).astype(np.uint8)
+
+        # Define dtype with RGB colors
+        dtype = [('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
+                ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
+
+        # Create structured array
+        vertices = np.empty(num_points, dtype=dtype)
+        vertices['x'] = means[:, 0]
+        vertices['y'] = means[:, 1]
+        vertices['z'] = means[:, 2]
+        vertices['red'] = colors[:, 0]
+        vertices['green'] = colors[:, 1]
+        vertices['blue'] = colors[:, 2]
+    else:
+        # No color, just xyz
+        dtype = [('x', 'f4'), ('y', 'f4'), ('z', 'f4')]
+
+        vertices = np.empty(num_points, dtype=dtype)
+        vertices['x'] = means[:, 0]
+        vertices['y'] = means[:, 1]
+        vertices['z'] = means[:, 2]
+
+    # Create PLY element and write to file
+    path.parent.mkdir(exist_ok=True, parents=True)
+    vertex_element = PlyElement.describe(vertices, 'vertex')
+    PlyData([vertex_element]).write(path)
+
+    print(f"Exported {num_points} Gaussian centers to {path}")

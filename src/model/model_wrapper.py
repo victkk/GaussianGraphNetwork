@@ -272,28 +272,18 @@ class ModelWrapper(LightningModule):
                 path / "video" / f"{scene}_frame_{frame_str}.mp4",
             )
 
-        # Save Gaussians as PLY
-        # Note: GGN's Gaussians use covariance matrices instead of scales+rotations.
-        # To enable PLY export, you need to either:
-        # 1. Modify Gaussians dataclass to include scales and rotations, OR
-        # 2. Decompose covariances into scales and rotations here
-        # For reference, see encoder_costvolume.py line 420-437 where scales/rotations are computed.
+        # Save Gaussians as point cloud PLY (xyz coordinates + optional colors)
         if self.test_cfg.save_gaussian:
-            print(f"Warning: PLY export is not fully implemented for GGN.")
-            print(f"  GGN uses covariance-based Gaussians, while PLY export requires scales+rotations.")
-            print(f"  To enable PLY export, modify the Gaussians dataclass or add covariance decomposition.")
-            # Uncomment and implement when scales/rotations are available:
-            # from .ply_export import export_ply
-            # ply_save_path = path / scene / "gaussians.ply"
-            # export_ply(
-            #     extrinsics=batch["context"]["extrinsics"][0, 0],
-            #     means=gaussians.means[0],
-            #     scales=gaussians.scales[0],  # Not available in current Gaussians class
-            #     rotations=gaussians.rotations[0],  # Not available in current Gaussians class
-            #     harmonics=gaussians.harmonics[0],
-            #     opacities=gaussians.opacities[0],
-            #     path=ply_save_path,
-            # )
+            from .ply_export import export_point_cloud_ply
+            name = get_cfg()["wandb"]["name"]
+            ply_save_path = self.test_cfg.output_path / name / "gaussians" / f"{scene}.ply"
+
+            # Export Gaussian centers with colors from harmonics
+            export_point_cloud_ply(
+                means=gaussians.means[0],  # (N, 3)
+                path=ply_save_path,
+                harmonics=gaussians.harmonics[0],  # (N, 3, d_sh) - optional, for colors
+            )
 
         save_path = 'res_8view_re10k.json'
 
