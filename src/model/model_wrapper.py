@@ -197,18 +197,20 @@ class ModelWrapper(LightningModule):
         assert b == 1
 
         # Render Gaussians.
-        # with self.benchmarker.time("encoder"):
-        gaussians = self.encoder(
-            batch["context"],
-            self.global_step,
-            deterministic=False,
-        )
+        # Time only the encoder inference (from input images to Gaussians prediction)
+        with self.benchmarker.time("encoder", sync_cuda=True):
+            gaussians = self.encoder(
+                batch["context"],
+                self.global_step,
+                deterministic=False,
+            )
         #     flops_counter.propagate(batch["context"],
         #         self.global_step,
         #         deterministic=False,)
         # result_table = flops_counter.print_result_table()
         # print(result_table)
-        with self.benchmarker.time("decoder", num_calls=v):
+        # Time decoder rendering (separate from encoder inference)
+        with self.benchmarker.time("decoder", num_calls=v, sync_cuda=True):
             output = self.decoder.forward(
                 gaussians,
                 batch["target"]["extrinsics"],

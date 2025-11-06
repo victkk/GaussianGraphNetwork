@@ -13,11 +13,24 @@ class Benchmarker:
         self.execution_times = defaultdict(list)
 
     @contextmanager
-    def time(self, tag: str, num_calls: int = 1):
+    def time(self, tag: str, num_calls: int = 1, sync_cuda: bool = True):
+        """
+        Time a code block with optional CUDA synchronization.
+
+        Args:
+            tag: Name for this timing measurement
+            num_calls: Number of logical calls (for averaging batch operations)
+            sync_cuda: If True, synchronize CUDA before and after timing to ensure
+                      accurate GPU operation timing
+        """
         try:
+            if sync_cuda and torch.cuda.is_available():
+                torch.cuda.synchronize()
             start_time = time()
             yield
         finally:
+            if sync_cuda and torch.cuda.is_available():
+                torch.cuda.synchronize()
             end_time = time()
             for _ in range(num_calls):
                 self.execution_times[tag].append((end_time - start_time) / num_calls)
